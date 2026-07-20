@@ -6,6 +6,8 @@ project vendor-neutral, and welcome contributors from many organizations.
 
 ## Ground rules
 
+- **Code of Conduct.** Participation is governed by our
+  [Code of Conduct](CODE_OF_CONDUCT.md). Be kind.
 - **License.** All contributions are under [Apache License 2.0](LICENSE). By
   opening a PR you agree your contribution is licensed under it.
 - **Design in public.** Non-trivial changes start as an RFC (a discussion or a
