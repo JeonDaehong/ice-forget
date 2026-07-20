@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a capability or improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Non-trivial features are designed in the open. For anything beyond a small,
+        self-contained change, this issue may be asked to graduate into a short RFC
+        before implementation — see [CONTRIBUTING](../blob/main/CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the compliance/operational pain, not just the feature.
+      placeholder: I need to prove erasure to an auditor without exposing snapshot ids in the certificate.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should IceForget do? A CLI/API sketch helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This keeps IceForget vendor-neutral (no dependency on a single vendor's proprietary service).
+        - label: I'm willing to help implement or review this.

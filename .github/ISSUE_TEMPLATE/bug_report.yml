@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in IceForget behaved incorrectly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please fill in as much as you can —
+        a reproducible case is worth a thousand words.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: Running `iceforget erase ...` reported ERASED but a residual row remained in snapshot X.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands or code. `iceforget demo` reproductions are ideal.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: iceforget-version
+    attributes:
+      label: IceForget version
+      description: Output of `iceforget version`.
+      placeholder: "0.0.1"
+    validations:
+      required: true
+  - type: input
+    id: pyiceberg-version
+    attributes:
+      label: PyIceberg version
+      placeholder: "0.11.1"
+    validations:
+      required: true
+  - type: input
+    id: catalog
+    attributes:
+      label: Catalog
+      description: REST / SQL (SQLite) / Glue / Hive, and anything relevant about it.
+      placeholder: REST catalog on S3 warehouse
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version & OS
+      placeholder: "3.11 on Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / traceback
+      render: shell
