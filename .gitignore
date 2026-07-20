@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# IceForget local artifacts
+certs/
+*.db
+warehouse/
+.smoke/
+iceforget-local.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

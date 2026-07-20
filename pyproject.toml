@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "iceforget"
+version = "0.0.1"
+description = "Right-to-be-forgotten compliance engine for Apache Iceberg tables."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "IceForget contributors" }]
+keywords = ["iceberg", "gdpr", "compliance", "right-to-be-forgotten", "data-erasure", "ccpa"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Database",
+]
+
+dependencies = [
+    "pyiceberg>=0.9.0",
+    "pyarrow>=14.0.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Local demo / tests: SQL catalog backed by SQLite + a local warehouse dir.
+demo = ["sqlalchemy>=2.0"]
+dev = [
+    "pytest>=8.0",
+    "sqlalchemy>=2.0",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+iceforget = "iceforget.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/iceforget/iceforget"
+Issues = "https://github.com/iceforget/iceforget/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/iceforget"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: Typer expresses CLI options as call-valued argument defaults by design.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# conftest imports pyiceberg only after importorskip guards.
+"tests/conftest.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

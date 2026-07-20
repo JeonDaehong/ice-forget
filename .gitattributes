@@ -1,0 +1,8 @@
+# Normalize line endings to LF in the repository for all text files.
+* text=auto eol=lf
+
+# Binary types git should not touch.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.parquet binary

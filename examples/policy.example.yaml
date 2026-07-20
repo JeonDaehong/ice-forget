@@ -1,0 +1,35 @@
+# Example IceForget policy.
+#
+# `catalog.properties` is passed verbatim to pyiceberg.catalog.load_catalog,
+# so use whatever your catalog needs. Below are two common shapes.
+
+# --- REST catalog (recommended) ---
+catalog:
+  name: prod
+  properties:
+    type: rest
+    uri: https://catalog.example.com
+    warehouse: s3://my-lake/warehouse
+    # token: ...                       # or other REST auth properties
+    # s3.region: us-east-1
+
+# --- Local SQLite catalog (for kicking the tires) ---
+# catalog:
+#   name: local
+#   properties:
+#     type: sql
+#     uri: sqlite:///./iceforget-local.db
+#     warehouse: file://./warehouse
+
+tables:
+  - table: db.users
+    identifier_columns: [user_id]     # erasure keys must be one of these
+    mode: orchestrate                 # orchestrate | crypto-shred (roadmap)
+    retain_last_snapshots: 1          # time-travel budget kept after erasure
+    expire_older_than_days: 7         # only expire snapshots older than this
+    sla_days: 30                      # GDPR deadline (days from receipt)
+
+  - table: analytics.events
+    identifier_columns: [user_id, device_id]
+    retain_last_snapshots: 3
+    sla_days: 30
