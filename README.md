@@ -142,7 +142,8 @@ Concretely:
 
 ## Roadmap
 
-- Surgical history rewrite (erase a subject while preserving time travel)
+- Surgical history rewrite (erase a subject while preserving time travel) —
+  design in [RFC 0001](docs/rfcs/0001-surgical-history-rewrite.md)
 - Crypto-shredding mode (per-subject KMS keys: AWS KMS / GCP KMS / Vault)
 - Deletion-request queue + SLA tracker (30-day deadline monitoring)
 - Spark and `iceberg-rust` engines
@@ -153,7 +154,7 @@ Concretely:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). IceForget is developed in the open under
 [Apache License 2.0](LICENSE) with an eye toward the Apache Incubator; design
-decisions run as public RFCs.
+decisions run as public RFCs in [`docs/rfcs/`](docs/rfcs/).
 
 ## License
 
