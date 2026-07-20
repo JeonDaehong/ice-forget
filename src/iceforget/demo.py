@@ -9,6 +9,7 @@ credentials, or Spark cluster required.
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -29,10 +30,12 @@ def run_demo(console) -> None:
     from iceforget.engines.pyiceberg_engine import PyIcebergEngine
     from iceforget.policy import CatalogConfig, Policy, TablePolicy
 
-    # ignore_cleanup_errors: on Windows the SQLite catalog file stays memory-mapped
-    # by the process until exit, which would otherwise break temp-dir teardown.
-    with tempfile.TemporaryDirectory(prefix="iceforget-demo-", ignore_cleanup_errors=True) as tmp:
-        tmp_path = Path(tmp)
+    # Manual temp-dir management (not TemporaryDirectory): ignore_cleanup_errors
+    # is 3.10+, and on Windows the SQLite catalog file stays open until we dispose
+    # the engine. So we dispose the engine, then rmtree, in the finally block.
+    tmp_path = Path(tempfile.mkdtemp(prefix="iceforget-demo-"))
+    catalog = None
+    try:
         warehouse = tmp_path / "warehouse"
         warehouse.mkdir()
         db_uri = f"sqlite:///{(tmp_path / 'catalog.db').as_posix()}"
@@ -123,3 +126,10 @@ def run_demo(console) -> None:
             f"sha256={cert.body_sha256[:16]}...  integrity_ok={cert.verify_integrity()}"
         )
         console.rule("done")
+    finally:
+        if catalog is not None:
+            try:
+                catalog.engine.dispose()
+            except Exception:  # noqa: BLE001 - best-effort resource release
+                pass
+        shutil.rmtree(tmp_path, ignore_errors=True)
