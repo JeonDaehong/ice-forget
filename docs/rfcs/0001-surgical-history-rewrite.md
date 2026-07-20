@@ -3,7 +3,7 @@
 - **Status:** Discussion
 - **Author(s):** 대홍 (@JeonDaehong)
 - **Created:** 2026-07-20
-- **Discussion:** (open a companion issue and link it here)
+- **Discussion:** [#5](https://github.com/JeonDaehong/ice-forget/issues/5)
 - **Supersedes / Superseded by:** —
 
 ## Summary
