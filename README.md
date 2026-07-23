@@ -57,7 +57,8 @@ For one subject key, IceForget runs a single governed, audited operation:
 | **index** | Uses Iceberg scan-planning (no full read) to find every data file, across *all* snapshots, that serves the subject — the "blast radius". |
 | **delete** | Copy-on-write delete of matching rows from the live snapshot. |
 | **compact** | Consolidate rewritten files (best effort; a no-op on the PyIceberg engine, which rewrites during delete). |
-| **expire** | Expire snapshots down to the table's retention budget so files still referencing the PII become orphaned and physically deletable. |
+| **expire** | Expire snapshots down to the table's retention budget so files still referencing the PII become orphaned. |
+| **purge** | **Physically delete those files.** Expiry only unlinks a file from metadata — the bytes survive until something removes them, and PyIceberg has no orphan-file cleanup. IceForget deletes exactly the blast-radius files, and only those no longer referenced by any snapshot. |
 | **verify** | Re-scan **every reachable snapshot** and count residual rows. Zero = clean. |
 | **certify** | Emit a tamper-evident JSON [erasure certificate](#the-erasure-certificate): who, what table, when received/completed, rows, files, snapshots expired, residual count, SHA-256 over the body. |
 
@@ -82,6 +83,7 @@ tables:
   - table: db.users
     identifier_columns: [user_id]   # erasure keys must be one of these
     mode: orchestrate               # orchestrate | surgical
+    purge_data_files: true          # physically delete the subject's files
     retain_last_snapshots: 1        # time-travel budget kept after erasure
     expire_older_than_days: 7       # only expire snapshots older than this
     sla_days: 30                    # GDPR deadline, for the SLA tracker
@@ -146,6 +148,8 @@ iceforget verify -p policy.yaml --table db.users -k user_id=42 --json
   "outcome": "erased",
   "rows_deleted": 1,
   "files_in_blast_radius": 1,
+  "files_purged": 1,
+  "files_left_on_disk": 0,
   "snapshots_expired": [123, 456],
   "residual_rows": 0,
   "received_at": "2026-07-20T09:00:00+00:00",
@@ -169,9 +173,15 @@ IceForget is a **technical measure**, not legal advice. Concretely:
   catalog. It reaches into a few PyIceberg internals (manifest writers, the
   catalog pointer swap) that are not public API and may shift between releases.
   Anything outside that scope raises rather than proceeding.
-- **Verification checks catalog-reachable snapshots.** Files already unreferenced
-  but not yet garbage-collected, and copies outside the table (backups, external
-  exports, downstream systems), are out of scope and must be handled separately.
+- **Verification checks catalog-reachable snapshots**, and the purge step checks
+  the warehouse. Copies *outside* the table — backups, external exports,
+  downstream systems — are out of scope and must be handled separately.
+- **Deletion is immediate, not quarantined.** A reader holding a snapshot that
+  references a purged file will fail. Iceberg's own orphan cleanup defaults to a
+  multi-day age threshold for this reason; reconciling "erase now" with "don't
+  break running jobs" is tracked for RFC 0002. Set `purge_data_files: false` if
+  an external GC owns deletion — the certificate then reports `bytes-on-disk`
+  rather than `erased`.
 - **No warranty of legal sufficiency.** Crypto-shredding's legal validity varies
   by jurisdiction; consult counsel.
 

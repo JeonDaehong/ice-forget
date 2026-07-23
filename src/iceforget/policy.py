@@ -44,6 +44,10 @@ class TablePolicy(BaseModel):
     expire_older_than_days: int | None = None
     # Compliance deadline used by the SLA tracker, in days from receipt.
     sla_days: int = 30
+    # Physically delete the subject's data files once no snapshot references
+    # them. Off means the bytes stay on disk and the certificate says so —
+    # unlinking a file from metadata is not erasure.
+    purge_data_files: bool = True
 
     @field_validator("identifier_columns")
     @classmethod
