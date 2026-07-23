@@ -78,3 +78,23 @@ def policy():
 @pytest.fixture
 def coordinator(catalog, users_table, policy):
     return ErasureCoordinator(PyIcebergEngine(catalog), policy)
+
+
+@pytest.fixture
+def surgical_policy():
+    """Same table, but erased via the time-travel-preserving rewrite."""
+    return Policy(
+        catalog=CatalogConfig(name="test"),
+        tables=[
+            TablePolicy(
+                table="db.users",
+                identifier_columns=["user_id"],
+                mode="surgical",
+            )
+        ],
+    )
+
+
+@pytest.fixture
+def surgical_coordinator(catalog, users_table, surgical_policy):
+    return ErasureCoordinator(PyIcebergEngine(catalog), surgical_policy)

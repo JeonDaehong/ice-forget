@@ -81,6 +81,7 @@ catalog:
 tables:
   - table: db.users
     identifier_columns: [user_id]   # erasure keys must be one of these
+    mode: orchestrate               # orchestrate | surgical
     retain_last_snapshots: 1        # time-travel budget kept after erasure
     expire_older_than_days: 7       # only expire snapshots older than this
     sla_days: 30                    # GDPR deadline, for the SLA tracker
@@ -88,6 +89,21 @@ tables:
 
 Erasing on a column that isn't an `identifier_column` is refused — a guardrail
 against over-deletion.
+
+### Processing modes
+
+| mode | what it does | time travel |
+|------|--------------|-------------|
+| `orchestrate` *(default)* | delete → compact → expire → verify | shortened to `retain_last_snapshots` |
+| `surgical` | rewrites every snapshot minus the subject ([RFC 0001](docs/rfcs/0001-surgical-history-rewrite.md)) | **preserved** — every snapshot id still resolves |
+
+`surgical` is Phase 1: unpartitioned, copy-on-write tables on a SQL catalog.
+Partitioned tables, merge-on-read deletes, and REST/Glue commits are refused
+explicitly rather than silently mishandled.
+
+A mode that isn't implemented yet is rejected when the policy loads. The
+certificate attests `processing_mode`, so IceForget refuses to run one mode
+while signing another.
 
 ## CLI
 
@@ -144,13 +160,15 @@ detects any later edit.
 
 ## Scope & honest limits
 
-IceForget is a **technical measure**, not legal advice. The MVP deliberately
-implements the standard *orchestrate-and-prove* pipeline, **not** the
-time-travel-preserving "surgical history rewrite" (that's on the roadmap).
-Concretely:
+IceForget is a **technical measure**, not legal advice. Concretely:
 
-- **Expiry removes reachable history** down to `retain_last_snapshots`. That is
-  the intended compliance trade-off, but it *does* shorten time travel.
+- **`orchestrate` expiry removes reachable history** down to
+  `retain_last_snapshots`. That is the intended compliance trade-off, but it
+  *does* shorten time travel. Use `surgical` when history must survive.
+- **`surgical` is Phase 1 scope.** Unpartitioned, copy-on-write tables on a SQL
+  catalog. It reaches into a few PyIceberg internals (manifest writers, the
+  catalog pointer swap) that are not public API and may shift between releases.
+  Anything outside that scope raises rather than proceeding.
 - **Verification checks catalog-reachable snapshots.** Files already unreferenced
   but not yet garbage-collected, and copies outside the table (backups, external
   exports, downstream systems), are out of scope and must be handled separately.
@@ -159,8 +177,9 @@ Concretely:
 
 ## Roadmap
 
-- Surgical history rewrite (erase a subject while preserving time travel) —
-  design in [RFC 0001](docs/rfcs/0001-surgical-history-rewrite.md)
+- Surgical history rewrite, Phase 2+: partitioned tables, merge-on-read
+  deletes, REST / Glue commits — see
+  [RFC 0001](docs/rfcs/0001-surgical-history-rewrite.md)
 - Crypto-shredding mode (per-subject KMS keys: AWS KMS / GCP KMS / Vault)
 - Deletion-request queue + SLA tracker (30-day deadline monitoring)
 - Spark and `iceberg-rust` engines

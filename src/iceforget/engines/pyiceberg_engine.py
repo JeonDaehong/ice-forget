@@ -30,6 +30,11 @@ class PyIcebergEngine:
         """Build an engine from a catalog name + PyIceberg connection properties."""
         return cls(load_catalog(catalog_name, **properties))
 
+    @property
+    def catalog(self) -> Catalog:
+        """The underlying PyIceberg catalog (needed for surgical commits)."""
+        return self._catalog
+
     # -- lookups -----------------------------------------------------------
 
     def load_table(self, identifier: str) -> Any:

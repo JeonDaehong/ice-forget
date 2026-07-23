@@ -10,12 +10,23 @@ operation:
       -> verify           (re-scan every reachable snapshot)
       -> certify          (tamper-evident audit record)
 
-MVP scope, per the design's risk note: this is orchestration + proof, not the
-time-travel-preserving "surgical history rewrite" (that's the roadmap). Expiry
-here does remove reachable history down to the table's retention budget, which
-is exactly the trade-off the compliance pipeline is supposed to make. Nothing
-mutates when ``dry_run=True`` — you get the blast radius and a projected
-outcome only.
+The table's policy ``mode`` selects how the erasure is carried out:
+
+``orchestrate``
+    The pipeline above. Expiry removes reachable history down to the table's
+    retention budget — the trade-off the compliance pipeline is meant to make,
+    but it *does* shorten time travel.
+
+``surgical``
+    RFC 0001 Method A: rewrite every snapshot minus the subject, preserving
+    every snapshot id. Nothing is expired, so time travel survives intact.
+
+A mode that isn't implemented is refused at policy-load time rather than here,
+because the certificate attests ``processing_mode``: running a different mode
+than the one we sign would make the audit record untrue.
+
+Nothing mutates when ``dry_run=True`` — you get the blast radius and a
+projected outcome only.
 """
 
 from __future__ import annotations
@@ -72,10 +83,10 @@ class ErasureCoordinator:
             table=table, key=key, subject=subject, request_id=request_id
         )
         started = _utcnow()
-        t0 = time.monotonic()
 
         handle = self._engine.load_table(table)
         index = self._indexer.index(handle, request)
+        mode = table_policy.mode
 
         if dry_run:
             # Project the outcome without mutating: verify reflects current state.
@@ -91,8 +102,19 @@ class ErasureCoordinator:
                 dry_run=True,
                 started_at=started,
                 finished_at=_utcnow(),
+                method=mode,
             )
 
+        if mode == "surgical":
+            return self._erase_surgical(handle, request, index, started)
+        return self._erase_orchestrate(handle, request, index, table_policy, started)
+
+    # ------------------------------------------------------------------
+
+    def _erase_orchestrate(
+        self, handle, request: ErasureRequest, index, table_policy: TablePolicy, started: str
+    ) -> ErasureResult:
+        """delete -> compact -> expire -> verify. Shortens time travel by design."""
         row_filter = request.row_filter()
 
         # 1. delete rows from the live table (copy-on-write rewrite).
@@ -112,7 +134,6 @@ class ErasureCoordinator:
         # 4. verify residual rows across everything still reachable.
         verify: VerifyReport = self._verifier.verify(handle, request)
 
-        _ = t0  # duration is available if we later want it on the result
         return ErasureResult(
             request=request,
             index=index,
@@ -124,6 +145,49 @@ class ErasureCoordinator:
             dry_run=False,
             started_at=started,
             finished_at=_utcnow(),
+            method="orchestrate",
+        )
+
+    def _erase_surgical(
+        self, handle, request: ErasureRequest, index, started: str
+    ) -> ErasureResult:
+        """Rewrite every snapshot minus the subject, preserving time travel.
+
+        Unlike the orchestrate path this expires nothing: every snapshot id stays
+        resolvable, which is the guarantee the certificate records via
+        ``time_travel_preserved``.
+        """
+        from iceforget.surgical import SurgicalRewriter
+
+        catalog = getattr(self._engine, "catalog", None)
+        if catalog is None:
+            raise NotImplementedError(
+                f"mode 'surgical' needs an engine exposing a PyIceberg catalog; "
+                f"{type(self._engine).__name__} does not. Use mode 'orchestrate'."
+            )
+
+        outcome = SurgicalRewriter(catalog).rewrite(handle, request.key)
+
+        # The commit swapped the catalog pointer under us; re-load so the
+        # verification scan reads the rewritten metadata, not the stale handle.
+        handle = self._engine.load_table(request.table)
+        verify: VerifyReport = self._verifier.verify(handle, request)
+
+        return ErasureResult(
+            request=request,
+            index=index,
+            rows_deleted=outcome.rows_deleted,
+            delete_snapshot_id=self._engine.current_snapshot_id(handle),
+            compacted=False,
+            expired_snapshot_ids=[],
+            verify=verify,
+            dry_run=False,
+            started_at=started,
+            finished_at=_utcnow(),
+            method="surgical",
+            snapshots_rewritten=outcome.snapshots_rewritten,
+            files_rewritten=outcome.files_rewritten,
+            time_travel_preserved=outcome.time_travel_preserved,
         )
 
     def certify(self, result: ErasureResult) -> ErasureCertificate:
