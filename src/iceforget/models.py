@@ -47,6 +47,17 @@ def _predicate(col: str, value: Any) -> str:
     return f"{col} = {_literal(value)}"
 
 
+def render_row_filter(key: dict[str, Any]) -> str:
+    """Render a subject key as an Iceberg row-filter expression.
+
+    The single source of truth for turning a key into a predicate: both
+    :meth:`ErasureRequest.row_filter` and the surgical rewriter go through here,
+    so the orchestrate and surgical paths can never disagree about which rows a
+    request covers. Columns are sorted for a stable, reproducible predicate.
+    """
+    return " AND ".join(_predicate(col, val) for col, val in sorted(key.items()))
+
+
 # ---------------------------------------------------------------------------
 # Request
 # ---------------------------------------------------------------------------
@@ -87,7 +98,7 @@ class ErasureRequest:
 
     def row_filter(self) -> str:
         """Render the key as a PyIceberg row-filter expression string."""
-        return " AND ".join(_predicate(col, val) for col, val in sorted(self.key.items()))
+        return render_row_filter(self.key)
 
 
 # ---------------------------------------------------------------------------
@@ -189,10 +200,20 @@ class ErasureResult:
     dry_run: bool
     started_at: str
     finished_at: str
+    # Set by the surgical path; defaults describe the orchestrate path.
+    method: str = "orchestrate"
+    snapshots_rewritten: list[int] = field(default_factory=list)
+    files_rewritten: int = 0
+    time_travel_preserved: bool | None = None
 
     @property
     def success(self) -> bool:
-        return self.verify.clean
+        if not self.verify.clean:
+            return False
+        # A surgical rewrite that lost a snapshot id failed its core guarantee.
+        if self.method == "surgical" and self.time_travel_preserved is False:
+            return False
+        return True
 
 
 @dataclass
@@ -212,6 +233,9 @@ class ErasureCertificate:
     residual_rows: int
     received_at: str
     completed_at: str
+    method: str = "orchestrate"
+    snapshots_rewritten: list[int] = field(default_factory=list)
+    time_travel_preserved: bool | None = None
     body_sha256: str = ""
 
     @classmethod
@@ -220,10 +244,12 @@ class ErasureCertificate:
     ) -> ErasureCertificate:
         if result.dry_run:
             outcome = "dry-run"
-        elif result.verify.clean:
-            outcome = "erased"
-        else:
+        elif not result.verify.clean:
             outcome = "residual-detected"
+        elif result.method == "surgical" and result.time_travel_preserved is False:
+            outcome = "integrity-failed"
+        else:
+            outcome = "erased"
 
         cert = cls(
             request_id=result.request.request_id,
@@ -239,6 +265,9 @@ class ErasureCertificate:
             residual_rows=result.verify.residual_rows,
             received_at=result.request.received_at,
             completed_at=result.finished_at,
+            method=result.method,
+            snapshots_rewritten=result.snapshots_rewritten,
+            time_travel_preserved=result.time_travel_preserved,
         )
         cert.body_sha256 = cert._compute_hash()
         return cert

@@ -14,7 +14,13 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-ProcessingMode = Literal["orchestrate", "crypto-shred"]
+ProcessingMode = Literal["orchestrate", "surgical", "crypto-shred"]
+
+# Modes the coordinator can actually dispatch. A mode that is declared but not
+# implemented must be refused at load time: the erasure certificate attests
+# `processing_mode`, so accepting one we don't run would make the certificate
+# claim something untrue.
+IMPLEMENTED_MODES = frozenset({"orchestrate", "surgical"})
 
 
 class CatalogConfig(BaseModel):
@@ -51,6 +57,24 @@ class TablePolicy(BaseModel):
     def _retain_at_least_one(cls, v: int) -> int:
         if v < 1:
             raise ValueError("retain_last_snapshots must be >= 1 (the live snapshot)")
+        return v
+
+    @field_validator("mode")
+    @classmethod
+    def _mode_is_implemented(cls, v: str) -> str:
+        if v not in IMPLEMENTED_MODES:
+            raise ValueError(
+                f"processing mode {v!r} is not implemented yet. "
+                f"Supported: {sorted(IMPLEMENTED_MODES)}. Refusing rather than running a "
+                f"different mode than the erasure certificate would attest."
+            )
+        return v
+
+    @field_validator("expire_older_than_days")
+    @classmethod
+    def _expire_days_non_negative(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("expire_older_than_days must be >= 0, or null to ignore age")
         return v
 
 

@@ -238,15 +238,30 @@ def demo() -> None:
 def _print_result(result) -> None:
     v = result.verify
     verdict = "[green]ERASED[/green]" if v.clean else "[red]RESIDUAL DETECTED[/red]"
-    console.print(
-        Panel.fit(
-            f"rows deleted: [bold]{result.rows_deleted}[/bold]\n"
-            f"snapshots expired: {len(result.expired_snapshot_ids)}\n"
-            f"residual rows after erasure: {v.residual_rows}\n"
-            f"verdict: {verdict}",
-            title="erasure result",
+    lines = [
+        f"mode: [cyan]{result.method}[/cyan]",
+        f"rows deleted: [bold]{result.rows_deleted}[/bold]",
+    ]
+    if result.method == "surgical":
+        # The surgical path's whole claim is that history survived; show it
+        # next to the verdict rather than burying it in the certificate.
+        preserved = (
+            "[green]preserved[/green]"
+            if result.time_travel_preserved
+            else "[red]LOST[/red]"
         )
-    )
+        lines += [
+            f"snapshots rewritten: {len(result.snapshots_rewritten)}",
+            f"files rewritten: {result.files_rewritten}",
+            f"time travel: {preserved}",
+        ]
+    else:
+        lines.append(f"snapshots expired: {len(result.expired_snapshot_ids)}")
+    lines += [
+        f"residual rows after erasure: {v.residual_rows}",
+        f"verdict: {verdict}",
+    ]
+    console.print(Panel.fit("\n".join(lines), title="erasure result"))
 
 
 if __name__ == "__main__":
