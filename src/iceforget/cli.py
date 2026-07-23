@@ -32,14 +32,25 @@ console = Console()
 
 
 def _parse_key(pairs: list[str]) -> dict:
-    """Parse repeated ``col=value`` options into a typed key dict."""
+    """Parse repeated ``col=value`` options into a typed key dict.
+
+    Repeating the *same* column collects its values into a list, which renders
+    as an ``IN`` predicate — ``-k user_id=1 -k user_id=2`` erases both. Distinct
+    columns are AND-ed as before.
+    """
     key: dict = {}
     for pair in pairs:
         if "=" not in pair:
             raise typer.BadParameter(f"--key must be col=value, got {pair!r}")
         col, _, raw = pair.partition("=")
-        key[col.strip()] = _coerce(raw.strip())
-    return key
+        col = col.strip()
+        value = _coerce(raw.strip())
+        if col in key:
+            key[col].append(value)
+        else:
+            key[col] = [value]
+    # Unwrap single-valued columns so the common case stays a plain scalar.
+    return {col: vals[0] if len(vals) == 1 else vals for col, vals in key.items()}
 
 
 def _coerce(raw: str):
