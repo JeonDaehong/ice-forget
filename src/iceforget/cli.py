@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import json
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -99,6 +101,16 @@ def _short(path: str, width: int = 48) -> str:
     return path if len(path) <= width else "..." + path[-(width - 3) :]
 
 
+def _print_json(report) -> None:
+    """Emit a report as JSON on stdout.
+
+    Uses the builtin ``print`` rather than the Rich console on purpose: Rich
+    would wrap long lines and interpret square brackets as markup, which would
+    corrupt the payload a downstream parser reads.
+    """
+    print(json.dumps(report.to_dict(), indent=2))
+
+
 # ---------------------------------------------------------------------------
 # commands
 # ---------------------------------------------------------------------------
@@ -115,11 +127,17 @@ def index(
     table: str = typer.Option(..., help="Table identifier, e.g. db.users"),
     key: list[str] = typer.Option(..., "--key", "-k", help="Identifier col=value (repeatable)"),
     policy: str = typer.Option(..., "--policy", "-p", help="Path to policy file"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Print the raw IndexReport as JSON instead of a table"
+    ),
 ) -> None:
     """Show the blast radius of an erasure without mutating anything."""
     coordinator = _load(policy)
     request_key = _parse_key(key)
     result = coordinator.erase(table, request_key, dry_run=True)
+    if json_output:
+        _print_json(result.index)
+        return
     _print_index(result.index)
 
 
@@ -170,12 +188,22 @@ def verify(
     table: str = typer.Option(..., help="Table identifier, e.g. db.users"),
     key: list[str] = typer.Option(..., "--key", "-k", help="Identifier col=value (repeatable)"),
     policy: str = typer.Option(..., "--policy", "-p", help="Path to policy file"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Print the raw VerifyReport as JSON instead of a summary"
+    ),
 ) -> None:
     """Scan every reachable snapshot for residual rows of a subject."""
     coordinator = _load(policy)
     request_key = _parse_key(key)
     result = coordinator.erase(table, request_key, dry_run=True)
     v = result.verify
+    if json_output:
+        # Exit code still signals the verdict, so `--json` stays usable as a
+        # CI gate without having to parse the payload first.
+        _print_json(v)
+        if not v.clean:
+            raise typer.Exit(code=2)
+        return
     if v.clean:
         console.print(
             f"[green]clean[/green]: 0 residual rows across {v.scanned_snapshots} snapshots."

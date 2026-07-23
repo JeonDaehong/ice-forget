@@ -102,6 +102,15 @@ iceforget demo                                                   # self-containe
 `--dry-run` on `erase` shows the blast radius and projected outcome without
 mutating.
 
+`index` and `verify` accept `--json` to print the raw report instead of the
+table, for CI gates and audit tooling:
+
+```bash
+iceforget verify -p policy.yaml --table db.users -k user_id=42 --json
+```
+
+`verify` still exits 2 when residual rows remain, with or without `--json`.
+
 ## The erasure certificate
 
 ```json
