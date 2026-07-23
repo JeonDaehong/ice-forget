@@ -39,6 +39,17 @@ def _batch(user_ids, names):
 
 
 @pytest.fixture
+def make_batch():
+    """The batch builder, for tests that create their own tables.
+
+    Exposed as a fixture rather than imported from this module directly:
+    ``tests`` is not an installed package, so ``from tests.conftest import ...``
+    works locally but not from a clean checkout.
+    """
+    return _batch
+
+
+@pytest.fixture
 def catalog(tmp_path):
     warehouse = tmp_path / "warehouse"
     warehouse.mkdir()

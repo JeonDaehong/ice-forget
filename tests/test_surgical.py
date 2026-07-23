@@ -85,14 +85,12 @@ def test_certificate_records_the_surgical_guarantee(surgical_coordinator):
     assert cert.verify_integrity()
 
 
-def test_partitioned_table_is_refused(catalog):
+def test_partitioned_table_is_refused(catalog, make_batch):
     """Phase 1 is unpartitioned-only; it must refuse rather than corrupt."""
     from pyiceberg.partitioning import PartitionField, PartitionSpec
     from pyiceberg.schema import Schema
     from pyiceberg.transforms import IdentityTransform
     from pyiceberg.types import LongType, NestedField, StringType
-
-    from tests.conftest import _batch
 
     # An explicit Iceberg schema, so the spec's source_id resolves to a real field.
     iceberg_schema = Schema(
@@ -110,7 +108,7 @@ def test_partitioned_table_is_refused(catalog):
             )
         ),
     )
-    table.append(_batch([1, 2], ["A", "B"]))
+    table.append(make_batch([1, 2], ["A", "B"]))
 
     with pytest.raises(SurgicalRewriteError, match="unpartitioned"):
         SurgicalRewriter(catalog).rewrite(table, {"user_id": 1})
