@@ -205,6 +205,21 @@ class ErasureResult:
     snapshots_rewritten: list[int] = field(default_factory=list)
     files_rewritten: int = 0
     time_travel_preserved: bool | None = None
+    # Physical deletion of the subject's data files.
+    files_purged: list[str] = field(default_factory=list)
+    files_left_on_disk: int = 0
+    purge_requested: bool = True
+
+    @property
+    def bytes_erased(self) -> bool:
+        """True when no file that held the subject is still on disk.
+
+        Distinct from :attr:`VerifyReport.clean`, which only proves the subject
+        is unreachable through the catalog. A file can be unreferenced and still
+        sitting in the warehouse — for an erasure obligation those are not the
+        same thing.
+        """
+        return self.files_left_on_disk == 0
 
     @property
     def success(self) -> bool:
@@ -213,7 +228,11 @@ class ErasureResult:
         # A surgical rewrite that lost a snapshot id failed its core guarantee.
         if self.method == "surgical" and self.time_travel_preserved is False:
             return False
-        return True
+        # Bytes still in the warehouse is not an erasure — whether they remain
+        # because purging failed or because the policy opted out. Opting out is
+        # a legitimate choice (an external GC may own deletion), but it does not
+        # make this run a completed erasure.
+        return self.bytes_erased
 
 
 @dataclass
@@ -226,7 +245,7 @@ class ErasureCertificate:
     key_columns: list[str]
     processing_mode: str
     tool_version: str
-    outcome: str  # "erased" | "residual-detected" | "dry-run"
+    outcome: str  # "erased" | "residual-detected" | "bytes-on-disk" | "dry-run"
     rows_deleted: int
     files_in_blast_radius: int
     snapshots_expired: list[int]
@@ -236,6 +255,9 @@ class ErasureCertificate:
     method: str = "orchestrate"
     snapshots_rewritten: list[int] = field(default_factory=list)
     time_travel_preserved: bool | None = None
+    # Physical deletion: what the certificate can actually attest about bytes.
+    files_purged: int = 0
+    files_left_on_disk: int = 0
     body_sha256: str = ""
 
     @classmethod
@@ -248,6 +270,11 @@ class ErasureCertificate:
             outcome = "residual-detected"
         elif result.method == "surgical" and result.time_travel_preserved is False:
             outcome = "integrity-failed"
+        elif not result.bytes_erased:
+            # Unreachable through the catalog, but the bytes are still there.
+            # Saying "erased" here is exactly the lie this field exists to stop,
+            # so a policy that opted out of purging gets no exemption.
+            outcome = "bytes-on-disk"
         else:
             outcome = "erased"
 
@@ -265,6 +292,8 @@ class ErasureCertificate:
             residual_rows=result.verify.residual_rows,
             received_at=result.request.received_at,
             completed_at=result.finished_at,
+            files_purged=len(result.files_purged),
+            files_left_on_disk=result.files_left_on_disk,
             method=result.method,
             snapshots_rewritten=result.snapshots_rewritten,
             time_travel_preserved=result.time_travel_preserved,

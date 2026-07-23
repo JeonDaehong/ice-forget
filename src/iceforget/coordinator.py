@@ -106,8 +106,38 @@ class ErasureCoordinator:
             )
 
         if mode == "surgical":
-            return self._erase_surgical(handle, request, index, started)
-        return self._erase_orchestrate(handle, request, index, table_policy, started)
+            result = self._erase_surgical(handle, request, index, started)
+        else:
+            result = self._erase_orchestrate(handle, request, index, table_policy, started)
+        return self._purge(handle, index, result, table_policy)
+
+    def _purge(self, handle, index, result: ErasureResult, table_policy: TablePolicy):
+        """Physically delete the subject's data files, then record what remains.
+
+        Expiring or repointing a snapshot only unlinks a file from metadata —
+        the bytes survive in the warehouse. Rather than sweeping the warehouse
+        for orphans (which can race a concurrent writer's in-flight files), this
+        deletes exactly the blast-radius files, and only those no longer
+        referenced by any snapshot.
+        """
+        result.purge_requested = table_policy.purge_data_files
+        blast_radius = {m.file_path for m in index.matches}
+        # Re-load: the delete/expire/rewrite above moved the metadata pointer,
+        # and a stale handle would report the pre-erasure reference set — which
+        # still lists the very files we mean to delete.
+        handle = self._engine.load_table(table_policy.table)
+        if not table_policy.purge_data_files:
+            # Not purging is a policy choice, but the certificate must still say
+            # how many files were left behind rather than implying none were.
+            still_live = self._engine.referenced_files(handle)
+            result.files_left_on_disk = len(blast_radius - still_live)
+            return result
+
+        result.files_purged = self._engine.delete_files(handle, blast_radius)
+        # Anything in the blast radius we did not delete is still referenced by
+        # a live snapshot, so its bytes remain readable.
+        result.files_left_on_disk = len(blast_radius) - len(result.files_purged)
+        return result
 
     # ------------------------------------------------------------------
 

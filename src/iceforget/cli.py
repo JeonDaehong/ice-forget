@@ -237,7 +237,14 @@ def demo() -> None:
 
 def _print_result(result) -> None:
     v = result.verify
-    verdict = "[green]ERASED[/green]" if v.clean else "[red]RESIDUAL DETECTED[/red]"
+    if not v.clean:
+        verdict = "[red]RESIDUAL DETECTED[/red]"
+    elif not result.bytes_erased:
+        # Catalog-clean but the bytes survive: not an erasure, and the verdict
+        # must not imply otherwise.
+        verdict = "[red]BYTES ON DISK[/red]"
+    else:
+        verdict = "[green]ERASED[/green]"
     lines = [
         f"mode: [cyan]{result.method}[/cyan]",
         f"rows deleted: [bold]{result.rows_deleted}[/bold]",
@@ -257,8 +264,14 @@ def _print_result(result) -> None:
         ]
     else:
         lines.append(f"snapshots expired: {len(result.expired_snapshot_ids)}")
+    bytes_state = (
+        f"[green]{len(result.files_purged)} file(s) deleted[/green]"
+        if result.bytes_erased
+        else f"[red]{result.files_left_on_disk} file(s) STILL ON DISK[/red]"
+    )
     lines += [
         f"residual rows after erasure: {v.residual_rows}",
+        f"bytes on disk: {bytes_state}",
         f"verdict: {verdict}",
     ]
     console.print(Panel.fit("\n".join(lines), title="erasure result"))

@@ -83,3 +83,19 @@ class Engine(Protocol):
         """Expire snapshots so files no longer referenced by any retained snapshot
         become eligible for physical deletion."""
         ...
+
+    def referenced_files(self, table: Any) -> set[str]:
+        """Every data file path reachable from any snapshot in table metadata.
+
+        The complement of this set is what may be physically deleted. Engines
+        must be conservative: a path that *might* still be referenced belongs in
+        the result, because the caller uses this to authorize deletion."""
+        ...
+
+    def delete_files(self, table: Any, paths: set[str]) -> list[str]:
+        """Physically delete the given data files. Returns the paths deleted.
+
+        Expiring a snapshot only unlinks a file from metadata; the bytes survive
+        until something removes them. For an erasure tool that gap is the whole
+        ballgame, so this is a first-class engine operation."""
+        ...

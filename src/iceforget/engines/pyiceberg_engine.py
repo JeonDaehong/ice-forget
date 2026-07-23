@@ -120,6 +120,43 @@ class PyIcebergEngine:
         table.refresh()
         return ExpireResult(expired_snapshot_ids=targets)
 
+    # -- physical deletion -------------------------------------------------
+
+    def referenced_files(self, table: Any) -> set[str]:
+        """Data files reachable from any snapshot still in table metadata.
+
+        Walks the manifest tree rather than scanning, so a file counts as
+        referenced even when no row in it matches any predicate.
+        """
+        io = table.io
+        referenced: set[str] = set()
+        for snapshot in table.metadata.snapshots:
+            for manifest in snapshot.manifests(io):
+                # discard_deleted=True: an entry marked DELETED records that the
+                # snapshot *removed* the file, so it is not readable there. A
+                # copy-on-write delete leaves exactly such a tombstone pointing
+                # at the original PII file — counting it as referenced would
+                # protect the file we are trying to erase.
+                for entry in manifest.fetch_manifest_entry(io, discard_deleted=True):
+                    referenced.add(entry.data_file.file_path)
+        return referenced
+
+    def delete_files(self, table: Any, paths: set[str]) -> list[str]:
+        """Physically delete data files, skipping any that are still referenced.
+
+        The referenced-set check is re-run here rather than trusted from the
+        caller: deleting a live file would corrupt the table, so the guard sits
+        immediately next to the deletion.
+        """
+        if not paths:
+            return []
+        live = self.referenced_files(table)
+        deleted: list[str] = []
+        for path in sorted(paths - live):
+            table.io.delete(path)
+            deleted.append(path)
+        return deleted
+
     # -- internals ---------------------------------------------------------
 
     def _scan(self, table: Any, row_filter: str, snapshot_id: int | None):
