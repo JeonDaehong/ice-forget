@@ -43,6 +43,25 @@ def test_erase_leaves_other_subjects_intact(coordinator):
     assert other.verify.residual_rows == 1
 
 
+def test_erase_multiple_subjects_via_in_predicate(coordinator):
+    """PyIceberg must accept the IN predicate, and both subjects must go."""
+    result = coordinator.erase("db.users", {"user_id": [42, 7]})
+    assert result.rows_deleted == 2
+    assert result.success
+    assert result.verify.residual_rows == 0
+    # Each subject is independently gone, and a bystander is untouched.
+    assert coordinator.erase("db.users", {"user_id": 42}, dry_run=True).verify.residual_rows == 0
+    assert coordinator.erase("db.users", {"user_id": 7}, dry_run=True).verify.residual_rows == 0
+    assert coordinator.erase("db.users", {"user_id": 13}, dry_run=True).verify.residual_rows == 1
+
+
+def test_index_finds_multiple_subjects_via_in_predicate(coordinator):
+    result = coordinator.erase("db.users", {"user_id": [42, 21]}, dry_run=True)
+    assert result.index.row_filter == "user_id IN (42, 21)"
+    # 42 and 21 sit in different snapshots' files, so both files are in range.
+    assert result.index.matched_files == 2
+
+
 def test_erase_of_absent_subject_is_a_noop(coordinator):
     result = coordinator.erase("db.users", {"user_id": 999})
     assert result.rows_deleted == 0

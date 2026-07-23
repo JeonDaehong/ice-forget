@@ -24,6 +24,47 @@ def test_row_filter_renders_bool_and_float():
     assert ErasureRequest(table="t", key={"score": 1.5}).row_filter() == "score = 1.5"
 
 
+def test_row_filter_renders_in_for_multiple_values():
+    req = ErasureRequest(table="t", key={"user_id": [42, 7, 13]})
+    assert req.row_filter() == "user_id IN (42, 7, 13)"
+
+
+def test_row_filter_in_escapes_string_literals():
+    req = ErasureRequest(table="t", key={"name": ["O'Brien", "Bo"]})
+    assert req.row_filter() == "name IN ('O''Brien', 'Bo')"
+
+
+def test_row_filter_single_element_list_renders_as_equality():
+    # How the caller wrapped one value must not change the predicate.
+    assert ErasureRequest(table="t", key={"user_id": [42]}).row_filter() == "user_id = 42"
+    assert ErasureRequest(table="t", key={"user_id": (42,)}).row_filter() == "user_id = 42"
+
+
+def test_row_filter_mixes_in_and_equality_across_columns():
+    req = ErasureRequest(table="t", key={"user_id": [1, 2], "tenant": "acme"})
+    assert req.row_filter() == "tenant = 'acme' AND user_id IN (1, 2)"
+
+
+def test_row_filter_rejects_empty_value_list():
+    with pytest.raises(ValueError, match="empty value list"):
+        ErasureRequest(table="t", key={"user_id": []}).row_filter()
+
+
+def test_parse_key_collects_repeated_column_into_a_list():
+    from iceforget.cli import _parse_key
+
+    assert _parse_key(["user_id=1", "user_id=2"]) == {"user_id": [1, 2]}
+    # A single occurrence stays a scalar; distinct columns are unaffected.
+    assert _parse_key(["user_id=1", "tenant=acme"]) == {"user_id": 1, "tenant": "acme"}
+
+
+def test_parse_key_repeated_column_renders_as_in():
+    from iceforget.cli import _parse_key
+
+    req = ErasureRequest(table="t", key=_parse_key(["user_id=1", "user_id=2"]))
+    assert req.row_filter() == "user_id IN (1, 2)"
+
+
 def test_policy_lookup_and_missing():
     p = Policy(tables=[TablePolicy(table="db.users", identifier_columns=["user_id"])])
     assert p.has_table("db.users")

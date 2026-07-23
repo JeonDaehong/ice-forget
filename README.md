@@ -98,7 +98,15 @@ iceforget verify -p policy.yaml --table db.users -k user_id=42   # residual scan
 iceforget demo                                                   # self-contained run
 ```
 
-`--key/-k` is repeatable and AND-ed: `-k tenant=acme -k user_id=42`.
+`--key/-k` is repeatable. Different columns are AND-ed
+(`-k tenant=acme -k user_id=42`); repeating the *same* column batches its
+values into an `IN` predicate, so one run can erase several subjects:
+
+```bash
+iceforget erase -p policy.yaml --table db.users -k user_id=42 -k user_id=43
+# -> row filter: user_id IN (42, 43)
+```
+
 `--dry-run` on `erase` shows the blast radius and projected outcome without
 mutating.
 

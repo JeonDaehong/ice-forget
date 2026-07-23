@@ -28,6 +28,25 @@ def _literal(value: Any) -> str:
     return str(value)
 
 
+def _predicate(col: str, value: Any) -> str:
+    """Render one column's predicate: ``col = x``, or ``col IN (x, y)``.
+
+    A single value — including a one-element list — always renders as equality,
+    so the predicate for a given subject doesn't depend on how the caller
+    happened to wrap it.
+    """
+    # Sets are deliberately not accepted: they render in an arbitrary order and
+    # aren't JSON-serializable for the request id.
+    if isinstance(value, (list, tuple)):
+        values = list(value)
+        if not values:
+            raise ValueError(f"key column {col!r} has an empty value list")
+        if len(values) > 1:
+            return f"{col} IN ({', '.join(_literal(v) for v in values)})"
+        value = values[0]
+    return f"{col} = {_literal(value)}"
+
+
 # ---------------------------------------------------------------------------
 # Request
 # ---------------------------------------------------------------------------
@@ -40,6 +59,10 @@ class ErasureRequest:
     ``key`` maps PII identifier columns to the value(s) to erase, e.g.
     ``{"user_id": 42}`` or ``{"email": "a@b.com"}``. Multiple entries are
     AND-ed together into a row predicate.
+
+    A column may also carry a list of values — ``{"user_id": [42, 43]}`` — which
+    renders as an ``IN`` predicate, so one request can erase a batch of subjects
+    on the same column.
     """
 
     table: str
@@ -64,7 +87,7 @@ class ErasureRequest:
 
     def row_filter(self) -> str:
         """Render the key as a PyIceberg row-filter expression string."""
-        return " AND ".join(f"{col} = {_literal(val)}" for col, val in sorted(self.key.items()))
+        return " AND ".join(_predicate(col, val) for col, val in sorted(self.key.items()))
 
 
 # ---------------------------------------------------------------------------

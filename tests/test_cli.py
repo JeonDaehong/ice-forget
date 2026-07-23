@@ -70,6 +70,19 @@ def test_verify_json_clean_subject_exits_zero(policy_file):
     assert json.loads(result.stdout)["residual_rows"] == 0
 
 
+def test_repeated_key_for_one_column_becomes_an_in_predicate(policy_file):
+    result = _run(
+        "index", "--table", "db.users",
+        "-k", "user_id=42", "-k", "user_id=21",
+        "-p", policy_file, "--json",
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["row_filter"] == "user_id IN (42, 21)"
+    # Both subjects are in range, not just the last -k.
+    assert len({m["file_path"] for m in payload["matches"]}) == 2
+
+
 def test_default_output_is_still_rich(policy_file):
     """No --json => the human-readable rendering, and no JSON on stdout."""
     result = _run("index", "--table", "db.users", "-k", "user_id=42", "-p", policy_file)
