@@ -146,6 +146,13 @@ iceforget verify -p policy.yaml --table db.users -k user_id=42 --json
   "key_columns": ["user_id"],
   "processing_mode": "orchestrate",
   "outcome": "erased",
+  "erasure_level": 3,
+  "attests": "no snapshot reachable from the catalog serves the subject, and no file that held them remains in the warehouse",
+  "out_of_scope": [
+    "backups and snapshots taken outside this table",
+    "exports and downstream systems fed from this table",
+    "physical media recovery of already-deleted files"
+  ],
   "rows_deleted": 1,
   "files_in_blast_radius": 1,
   "files_purged": 1,
@@ -160,7 +167,24 @@ iceforget verify -p policy.yaml --table db.users -k user_id=42 --json
 ```
 
 `body_sha256` covers the full body; `ErasureCertificate.verify_integrity()`
-detects any later edit.
+detects any later edit — including an attempt to upgrade `erasure_level` or
+`attests` after the fact.
+
+### Erasure levels
+
+"Deleted" is not one thing. Most tooling stops at level 1 and calls it done.
+The certificate states which level a run actually reached, and every level is
+*checked* rather than assumed.
+
+| level | what is true |
+|-------|--------------|
+| **0** | nothing was erased (dry run) |
+| **1** | gone from the current snapshot — but still readable through history |
+| **2** | no reachable snapshot serves the subject — but a file that held them is still in the warehouse |
+| **3** | no reachable snapshot serves the subject, **and** no file that held them remains on disk |
+
+Level 3 is the default outcome. Anything less is reported as such rather than
+rounded up to "erased".
 
 ## Scope & honest limits
 

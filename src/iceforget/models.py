@@ -182,6 +182,68 @@ class VerifyReport:
 
 
 # ---------------------------------------------------------------------------
+# Erasure levels
+# ---------------------------------------------------------------------------
+
+
+class ErasureLevel:
+    """How complete an erasure is, as verifiable layers.
+
+    "Deleted" is not one thing, and most erasure tooling silently stops at the
+    first layer. Naming the layers lets a certificate state exactly how far a
+    run got, instead of asserting a bare "erased" that means different things to
+    the operator and the auditor.
+
+    Each level must be *checked*, never assumed — see :func:`erasure_level`.
+    """
+
+    NONE = 0
+    CURRENT_SNAPSHOT = 1
+    ALL_SNAPSHOTS = 2
+    BYTES_REMOVED = 3
+
+
+LEVEL_ATTESTS: dict[int, str] = {
+    ErasureLevel.NONE: "nothing was erased",
+    ErasureLevel.CURRENT_SNAPSHOT: (
+        "the subject is gone from the current snapshot, but is still readable "
+        "through at least one historical snapshot"
+    ),
+    ErasureLevel.ALL_SNAPSHOTS: (
+        "no snapshot reachable from the catalog serves the subject, but at least "
+        "one file that held them is still present in the warehouse"
+    ),
+    ErasureLevel.BYTES_REMOVED: (
+        "no snapshot reachable from the catalog serves the subject, and no file "
+        "that held them remains in the warehouse"
+    ),
+}
+
+# Things no level of this tool covers. Stated on every certificate: an auditor's
+# first question is what the document does *not* cover, and a certificate that
+# cannot answer that is worth less than one that can.
+OUT_OF_SCOPE: list[str] = [
+    "backups and snapshots taken outside this table",
+    "exports and downstream systems fed from this table",
+    "physical media recovery of already-deleted files",
+]
+
+
+def erasure_level(result: ErasureResult) -> int:
+    """Determine, by inspection, how far an erasure actually got."""
+    if result.dry_run:
+        return ErasureLevel.NONE
+    if not result.verify.clean:
+        # Some snapshot still serves the subject. The current one counts as
+        # cleared only if it is not among those still holding residual rows.
+        current_cleared = result.delete_snapshot_id not in result.verify.residual_snapshots
+        return ErasureLevel.CURRENT_SNAPSHOT if current_cleared else ErasureLevel.NONE
+    if not result.bytes_erased:
+        return ErasureLevel.ALL_SNAPSHOTS
+    return ErasureLevel.BYTES_REMOVED
+
+
+# ---------------------------------------------------------------------------
 # Erasure result + certificate
 # ---------------------------------------------------------------------------
 
@@ -258,12 +320,18 @@ class ErasureCertificate:
     # Physical deletion: what the certificate can actually attest about bytes.
     files_purged: int = 0
     files_left_on_disk: int = 0
+    # How far the erasure got, in plain words, plus what no level covers.
+    erasure_level: int = ErasureLevel.NONE
+    attests: str = ""
+    out_of_scope: list[str] = field(default_factory=list)
     body_sha256: str = ""
 
     @classmethod
     def from_result(
         cls, result: ErasureResult, *, tool_version: str, mode: str
     ) -> ErasureCertificate:
+        level = erasure_level(result)
+
         if result.dry_run:
             outcome = "dry-run"
         elif not result.verify.clean:
@@ -294,6 +362,9 @@ class ErasureCertificate:
             completed_at=result.finished_at,
             files_purged=len(result.files_purged),
             files_left_on_disk=result.files_left_on_disk,
+            erasure_level=level,
+            attests=LEVEL_ATTESTS[level],
+            out_of_scope=list(OUT_OF_SCOPE),
             method=result.method,
             snapshots_rewritten=result.snapshots_rewritten,
             time_travel_preserved=result.time_travel_preserved,
